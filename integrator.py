@@ -63,7 +63,6 @@ class NumericalIntegrator:
         return total, x, y
 
     def simpson(self, f, a, b, n):
-        # Simpson's rule usually requires an even number of intervals
         if n <= 0: return 0, None, None
         if n % 2 != 0:
             n += 1 # Ensure n is even for Simpson's
@@ -74,6 +73,37 @@ class NumericalIntegrator:
         
         total = (h / 3) * (y[0] + 4 * np.sum(y[1:-1:2]) + 2 * np.sum(y[2:-2:2]) + y[-1])
         return total, x, y
+
+    def adaptive_simpson(self, f, a, b, tol):
+        """
+        Recursive Adaptive Simpson's Rule.
+        Returns the approximate integral and the list of evaluation points used.
+        """
+        eval_points = []
+        
+        def simpson_step(f, a, b):
+            c = (a + b) / 2
+            h = b - a
+            fa = f(a)
+            fb = f(b)
+            fc = f(c)
+            eval_points.extend([a, b, c])
+            return (h / 6) * (fa + 4 * fc + fb)
+
+        def recursive_step(f, a, b, tol, whole):
+            c = (a + b) / 2
+            left = simpson_step(f, a, c)
+            right = simpson_step(f, c, b)
+            if abs(left + right - whole) <= 15 * tol:
+                return left + right + (left + right - whole) / 15
+            return recursive_step(f, a, c, tol / 2, left) + \
+                   recursive_step(f, c, b, tol / 2, right)
+
+        whole = simpson_step(f, a, b)
+        result = recursive_step(f, a, b, tol, whole)
+        
+        unique_points = np.sort(np.unique(eval_points))
+        return result, unique_points, f(unique_points)
 
     def get_true_area(self, f_int, a, b):
         return float(f_int(b) - f_int(a))
@@ -102,7 +132,6 @@ class NumericalIntegrator:
         for n in ns:
             approx, *_ = calc_method(f, a, b, n)
             abs_err, _ = self.get_error_metrics(approx, true_area)
-            # Use small constant to avoid log(0)
             errors.append(max(abs_err, 1e-18))
             
         return ns, errors
@@ -110,12 +139,11 @@ class NumericalIntegrator:
     def gaussian_quadrature(self, f, a, b, n):
         """
         N-point Gaussian Quadrature. 
-        Note: n here refers to the number of points, not intervals.
         """
         if n <= 0: return 0, None, None
         
         # Use numpy's leggauss for weights and nodes on [-1, 1]
-        nodes, weights = np.linalg.lapack.leggauss(n) if hasattr(np.linalg, 'lapack') else np.polynomial.legendre.leggauss(n)
+        nodes, weights = np.polynomial.legendre.leggauss(n)
         
         # Transform nodes and weights to [a, b]
         transformed_nodes = 0.5 * (nodes + 1) * (b - a) + a
